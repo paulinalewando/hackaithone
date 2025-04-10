@@ -66,15 +66,22 @@ const extractSources = (searchResults) => {
 
 // Create Azure OpenAI embeddings instance
 const createEmbeddings = () => {
+  console.log("AZURE_OPENAI_ENDPOINT:", process.env.AZURE_OPENAI_ENDPOINT);
+
+  if (!process.env.AZURE_OPENAI_ENDPOINT) {
+    throw new Error(
+      "AZURE_OPENAI_ENDPOINT is not defined in environment variables"
+    );
+  }
+
   return new AzureOpenAIEmbeddings({
     azureOpenAIApiDeploymentName:
       process.env.AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME,
     modelName: process.env.AZURE_EMBEDDING_MODEL,
     azureOpenAIApiVersion: process.env.AZURE_OPENAI_API_VERSION,
-    azureOpenAIApiInstanceName: process.env.AZURE_OPENAI_ENDPOINT.replace(
-      "https://",
-      ""
-    ).replace(".openai.azure.com", ""),
+    azureOpenAIApiInstanceName: new URL(
+      process.env.AZURE_OPENAI_ENDPOINT
+    ).hostname.split(".")[0],
     azureOpenAIApiKey: process.env.AZURE_OPENAI_API_KEY,
   });
 };

@@ -1,0 +1,9 @@
+# Logo Placeholder
+
+Since we can't directly create a binary image file through this interface, you'll need to:
+
+1. Find or create a logo image (preferably a PNG with transparent background)
+2. Save it as `logo.png` in the `rag-chat-app/public/` directory
+3. Make sure it's an appropriate size (recommended: 120x40px)
+
+Alternatively, you can modify the `App.vue` file to remove the logo reference or use a different image path. 
