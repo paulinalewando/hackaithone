@@ -17,25 +17,52 @@ dotenv.config();
 
 // Function to perform hybrid search (combination of semantic and keyword search)
 // This is a simplified implementation since actual hybrid search depends on vector store capabilities
-async function hybridSearch(vectorStore, query, k = 4) {
+async function hybridSearch(vectorStore, query, k = 8) {
   console.log(`Performing hybrid search for: "${query}"`);
 
-  // First, perform semantic search
-  const semanticResults = await vectorStore.similaritySearch(query, k);
+  // Using fixed k value of 12 for all queries to ensure comprehensive results
+  console.log(`Using fixed retrieval count k=${k} for all queries`);
+
+  // Perform semantic search with scores
+  const resultsWithScores = await vectorStore.similaritySearchWithScore(
+    query,
+    k
+  );
+  console.log(`Retrieved ${resultsWithScores.length} results with scores`);
+
+  // Process results - each result is a tuple of [document, score]
+  const processedDocs = resultsWithScores.map(([doc, score]) => {
+    // Add the score to document metadata for later use
+    return {
+      ...doc,
+      metadata: {
+        ...doc.metadata,
+        score: score,
+      },
+      pageContent: doc.pageContent,
+    };
+  });
+
+  // Sort by score (lower is better)
+  processedDocs.sort((a, b) => a.metadata.score - b.metadata.score);
 
   // Get document titles for reference
-  const documentTitles = semanticResults.map(
-    (doc) => doc.metadata.title || doc.metadata.source || "Unknown"
-  );
+  const documentSources = processedDocs.map((doc) => {
+    const source = doc.metadata.source || doc.metadata.title || "Unknown";
+    return `${source} (relevance: ${doc.metadata.score.toFixed(4)})`;
+  });
 
   // Log search findings
-  console.log(
-    `Found ${semanticResults.length} relevant documents from: ${documentTitles.join(", ")}`
-  );
+  console.log(`Top results:`);
+  documentSources.slice(0, 5).forEach((source, i) => {
+    console.log(`  ${i + 1}. ${source}`);
+  });
 
   return {
-    documents: semanticResults,
-    sources: [...new Set(documentTitles)],
+    documents: processedDocs,
+    sources: processedDocs.map(
+      (doc) => doc.metadata.source || doc.metadata.title || "Unknown"
+    ),
   };
 }
 
@@ -44,14 +71,17 @@ const formatDocumentsWithSourcesAsString = (searchResults) => {
   const { documents } = searchResults;
 
   return documents
-    .map((document) => {
+    .map((document, index) => {
       // Enhance metadata formatting for better source attribution
       const source = document.metadata.source || "Unknown";
       const title = document.metadata.title || source;
       const category = document.metadata.category || "General";
+      const relevance = document.metadata.score
+        ? `Relevance: ${document.metadata.score.toFixed(4)}`
+        : "";
 
-      // Format metadata for context
-      const metadataStr = `Source: ${source}, Title: ${title}, Category: ${category}`;
+      // Format metadata for context with document number for reference
+      const metadataStr = `Document ${index + 1} | Source: ${source} | Title: ${title} | ${relevance}`;
 
       // Return formatted document with metadata
       return `[${metadataStr}]\n${document.pageContent}`;
@@ -143,7 +173,26 @@ async function createEnhancedRagChain() {
 Use the following pieces of context to answer the question at the end.
 If you don't know the answer, just say that you don't know, don't try to make up an answer.
 Keep your answers informative and concise.
-At the end of your answer, include a "Sources:" section that lists the source documents used.
+
+IMPORTANT ABOUT RELEVANCE:
+- Each document includes a relevance score - lower scores indicate higher relevance
+- Documents are already sorted by relevance (most relevant first)
+- When answering, prioritize information from documents with lower relevance scores
+- For comprehensive questions (like those about all offices or locations), be sure to include ALL relevant information
+
+ABOUT MULTILINGUAL SUPPORT:
+- Users may ask questions in different languages, particularly in Polish
+- If a question is asked in Polish, respond in Polish
+- If a question is asked in English, respond in English
+- Always maintain the same level of helpfulness regardless of the language used
+
+SPECIFIC INFORMATION:
+- For questions about job openings or career opportunities, include the link to Amsterdam Standard's careers page: https://amsterdamstandard.com/en/careers
+- For questions in Polish about "otwarte pozycje", "oferty pracy", "praca w AS", etc., include the same careers link
+
+When synthesizing information, ensure you're providing complete and accurate answers by considering ALL the relevant documents in the context.
+
+At the end of your answer, include a "Sources:" section that lists the document sources used.
 
 Context:
 ----------------

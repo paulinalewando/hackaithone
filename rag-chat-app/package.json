@@ -6,14 +6,16 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "serve": "vite preview"
+    "preview": "vite preview",
+    "api": "nodemon --watch api-server.js --watch ../enhanced-rag-chain.js api-server.js"
   },
   "dependencies": {
-    "vue": "^3.3.4",
-    "axios": "^1.5.0"
+    "axios": "^1.6.7",
+    "vue": "^3.4.21"
   },
   "devDependencies": {
-    "@vitejs/plugin-vue": "^4.3.4",
-    "vite": "^4.4.9"
+    "@vitejs/plugin-vue": "^4.5.2",
+    "nodemon": "^3.0.3",
+    "vite": "^4.5.1"
   }
 }
