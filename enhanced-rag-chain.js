@@ -15,9 +15,48 @@ import * as dotenv from "dotenv";
 // Load environment variables
 dotenv.config();
 
+// Create a map to store conversation history for different sessions
+const conversationHistories = new Map();
+
+// Function to get or create a conversation history for a session
+const getOrCreateConversationHistory = (sessionId = "default") => {
+  if (!conversationHistories.has(sessionId)) {
+    // Initialize a new conversation history for this session
+    conversationHistories.set(sessionId, []);
+  }
+  return conversationHistories.get(sessionId);
+};
+
+// Add a message to the conversation history
+const addMessageToHistory = (sessionId, role, content) => {
+  const history = getOrCreateConversationHistory(sessionId);
+  history.push({ role, content });
+
+  // Limit history to last 10 messages to prevent context overload
+  if (history.length > 10) {
+    history.shift();
+  }
+
+  return history;
+};
+
+// Format conversation history for inclusion in the prompt
+const formatConversationHistory = (history) => {
+  if (!history || history.length === 0) {
+    return "No previous conversation.";
+  }
+
+  return history
+    .map(
+      (message) =>
+        `${message.role === "human" ? "User" : "Assistant"}: ${message.content}`
+    )
+    .join("\n\n");
+};
+
 // Function to perform hybrid search (combination of semantic and keyword search)
 // This is a simplified implementation since actual hybrid search depends on vector store capabilities
-async function hybridSearch(vectorStore, query, k = 8) {
+async function hybridSearch(vectorStore, query, k = 12) {
   console.log(`Performing hybrid search for: "${query}"`);
 
   // Using fixed k value of 12 for all queries to ensure comprehensive results
@@ -168,9 +207,9 @@ async function createEnhancedRagChain() {
     });
     console.log("Vector store initialized");
 
-    // Create system prompt template with enhanced source attribution
+    // Create system prompt template with enhanced source attribution and conversation history
     const SYSTEM_TEMPLATE = `You are a helpful assistant for Amsterdam Standard company.
-Use the following pieces of context to answer the question at the end.
+Use the following pieces of context and conversation history to answer the question at the end.
 If you don't know the answer, just say that you don't know, don't try to make up an answer.
 Keep your answers informative and concise.
 
@@ -181,14 +220,13 @@ IMPORTANT ABOUT RELEVANCE:
 - For comprehensive questions (like those about all offices or locations), be sure to include ALL relevant information
 
 ABOUT MULTILINGUAL SUPPORT:
-- Users may ask questions in different languages, particularly in Polish
-- If a question is asked in Polish, respond in Polish
+- Users may ask questions in different languages, particularly in Polish, but the database is in English
+- If a question is asked in Polish, respond in Polish, but think in English
 - If a question is asked in English, respond in English
 - Always maintain the same level of helpfulness regardless of the language used
 
-SPECIFIC INFORMATION:
-- For questions about job openings or career opportunities, include the link to Amsterdam Standard's careers page: https://amsterdamstandard.com/en/careers
-- For questions in Polish about "otwarte pozycje", "oferty pracy", "praca w AS", etc., include the same careers link
+CONVERSATION HISTORY:
+{conversationHistory}
 
 When synthesizing information, ensure you're providing complete and accurate answers by considering ALL the relevant documents in the context.
 
@@ -204,7 +242,13 @@ Context:
     ]);
 
     // Build the enhanced RAG chain with hybrid search
-    const chain = async (question) => {
+    const chain = async (question, sessionId = "default") => {
+      console.log(
+        `Processing question for session ${sessionId}: "${question}"`
+      );
+      const conversationHistory = getOrCreateConversationHistory(sessionId);
+
+      // For all queries, proceed with normal processing
       // Step 1: Perform hybrid search to retrieve relevant documents
       const searchResults = await hybridSearch(vectorStore, question);
 
@@ -215,16 +259,24 @@ Context:
       // Step 3: Get sources for attribution
       const sources = extractSources(searchResults);
 
-      // Step 4: Generate messages with the prompt template
+      // Step 4: Format the conversation history
+      const formattedHistory = formatConversationHistory(conversationHistory);
+
+      // Step 5: Generate messages with the prompt template
       const messages = await prompt.invoke({
         question: question,
         context: formattedContext,
+        conversationHistory: formattedHistory,
       });
 
-      // Step 5: Generate answer using the LLM
+      // Step 6: Generate answer using the LLM
       const response = await chatModel.invoke(messages);
 
-      // Step 6: Return the answer and sources
+      // Step 7: Add to conversation history
+      addMessageToHistory(sessionId, "human", question);
+      addMessageToHistory(sessionId, "assistant", response.content);
+
+      // Step 8: Return the answer and sources
       return {
         answer: response.content,
         sources: sources,
@@ -240,13 +292,13 @@ Context:
 }
 
 // Main function to answer questions with the enhanced RAG chain
-async function answerQuestionWithSources(question) {
+async function answerQuestionWithSources(question, sessionId = "default") {
   try {
-    console.log(`Processing question: "${question}"`);
+    console.log(`Processing question: "${question}" for session: ${sessionId}`);
 
     // Create and invoke the enhanced RAG chain
     const chain = await createEnhancedRagChain();
-    const result = await chain(question);
+    const result = await chain(question, sessionId);
 
     // Format and display the answer with sources
     console.log("\nAnswer:");
@@ -255,6 +307,14 @@ async function answerQuestionWithSources(question) {
     console.log("\nSources:");
     result.sources.forEach((source, index) => {
       console.log(`${index + 1}. ${source}`);
+    });
+
+    console.log("\nConversation History:");
+    const history = getOrCreateConversationHistory(sessionId);
+    history.forEach((message, index) => {
+      console.log(
+        `${index + 1}. ${message.role}: ${message.content.substring(0, 50)}...`
+      );
     });
 
     return result;
@@ -278,26 +338,32 @@ async function demonstrateRagPipeline() {
 
   console.log("=== Enhanced RAG Question Answering Pipeline Demo ===\n");
 
+  // Use a single session ID for all demo questions to simulate a conversation
+  const demoSessionId = "demo-session";
+
   for (const question of sampleQuestions) {
     console.log(`\n----- Question: ${question} -----`);
-    await answerQuestionWithSources(question);
+    await answerQuestionWithSources(question, demoSessionId);
     console.log("-".repeat(50));
   }
 }
 
 // Create a simple API-like function to answer questions
-async function askQuestion(question) {
-  console.log(`Received question: "${question}"`);
+async function askQuestion(question, sessionId = "default") {
+  console.log(`Received question: "${question}" for session: ${sessionId}`);
 
   try {
-    const result = await answerQuestionWithSources(question);
+    const result = await answerQuestionWithSources(question, sessionId);
+    const conversationHistory = getOrCreateConversationHistory(sessionId);
 
     // Format the response in a user-friendly way
     return {
       status: "success",
+      sessionId: sessionId,
       question: question,
       answer: result.answer,
       sources: result.sources,
+      historyLength: conversationHistory.length,
       timestamp: new Date().toISOString(),
     };
   } catch (error) {
@@ -305,6 +371,7 @@ async function askQuestion(question) {
 
     return {
       status: "error",
+      sessionId: sessionId,
       question: question,
       error: "Failed to process your question. Please try again later.",
       timestamp: new Date().toISOString(),

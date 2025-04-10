@@ -7,6 +7,22 @@
           Amsterdam Standard Wiki Assistant
         </div>
         <div class="settings">
+          <div class="session-info">
+            <span
+              v-if="historyLength > 0"
+              class="history-badge"
+              title="Number of messages in conversation history"
+            >
+              {{ historyLength }}
+            </span>
+            <button
+              @click="resetConversation"
+              class="reset-button"
+              title="Reset conversation"
+            >
+              New Chat
+            </button>
+          </div>
           <label>
             <input
               type="checkbox"
@@ -98,6 +114,13 @@ const messages = ref([
 const isThinking = ref(false);
 const showSources = ref(true);
 const messagesContainer = ref(null);
+const sessionId = ref(generateSessionId());
+const historyLength = ref(0);
+
+// Generate a unique session ID
+function generateSessionId() {
+  return `web_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+}
 
 // Methods
 const sendMessage = async () => {
@@ -112,8 +135,17 @@ const sendMessage = async () => {
   isThinking.value = true;
 
   try {
-    // Call the actual API server
-    const response = await axios.post("/api/ask", { question: userMessage });
+    // Call the actual API server with session ID
+    const response = await axios.post("/api/ask", {
+      question: userMessage,
+      sessionId: sessionId.value,
+    });
+
+    // Update history length if provided
+    if (response.data.historyLength) {
+      historyLength.value = response.data.historyLength;
+    }
+
     messages.value.push({
       role: "bot",
       content: response.data.answer,
@@ -132,6 +164,12 @@ const sendMessage = async () => {
   }
 };
 
+// Save session ID to localStorage when it changes
+watch(sessionId, (newSessionId) => {
+  localStorage.setItem("chatSessionId", newSessionId);
+  console.log(`Session ID saved: ${newSessionId}`);
+});
+
 // Auto-scroll to bottom when messages change
 watch(messages, () => {
   nextTick(() => {
@@ -141,8 +179,33 @@ watch(messages, () => {
   });
 });
 
+// Reset conversation
+const resetConversation = () => {
+  // Generate a new session ID
+  sessionId.value = generateSessionId();
+
+  // Clear messages except for the initial greeting
+  messages.value = [
+    {
+      role: "bot",
+      content:
+        "Hello! I'm your Amsterdam Standard Wiki assistant. How can I help you today?",
+      sources: [],
+    },
+  ];
+
+  historyLength.value = 0;
+};
+
 // Initial scroll to bottom on mount
 onMounted(() => {
+  // Try to restore session ID from localStorage
+  const savedSessionId = localStorage.getItem("chatSessionId");
+  if (savedSessionId) {
+    sessionId.value = savedSessionId;
+    console.log(`Restored session ID: ${sessionId.value}`);
+  }
+
   if (messagesContainer.value) {
     messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
   }
@@ -165,6 +228,40 @@ onMounted(() => {
 .settings {
   font-size: 0.875rem;
   font-weight: normal;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.session-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.history-badge {
+  background-color: #4285f4;
+  color: white;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+}
+
+.reset-button {
+  background-color: #f1f3f4;
+  border: none;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.reset-button:hover {
+  background-color: #e0e0e0;
 }
 
 .message-wrapper {
