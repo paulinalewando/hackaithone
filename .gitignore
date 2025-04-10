@@ -1,0 +1,39 @@
+# Environment variables
+.env
+.env.local
+.env.*
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Dependency directories
+node_modules/
+jspm_packages/
+
+# Distribution directories
+dist/
+build/
+
+# Cache directories
+.cache/
+.npm/
+
+# Optional eslint cache
+.eslintcache
+
+# IDE / OS specific files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo 
